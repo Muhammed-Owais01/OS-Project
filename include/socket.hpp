@@ -1,38 +1,40 @@
-#pragma once
+#ifndef SOCKET_HPP
+#define SOCKET_HPP
 
-#ifndef SOCKET_H
-#define SOCKET_H
-
-#include <iostream>
-#include <string>
-#include <utility>
-#include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <unistd.h>
+#include <stdexcept>
+#include <string>
+#include <iostream>
+#include <cstring>
+#include <cerrno> 
 
-namespace os_socket {  
-    typedef struct sockaddr_in serv_addr_in;
-
+namespace os_socket {
     class Socket {
     private:
-        int sockfd = -1;
-        int option = 1;
+        int sockfd;
         int domain;
-        serv_addr_in address;
+        sockaddr_in address;
         socklen_t address_len;
-
+        int option = 1;
     public:
-        Socket(int domain, int type, int protocol = 0);
+        Socket(int domain, int type, int protocol);
+        Socket(int fd);
         ~Socket();
-
+        
         void bind(int port, const std::string& ip = "0.0.0.0");
-        void listen(int backlog = 5);
+        void listen(int backlog = 10);
         std::pair<int, std::string> accept();
         void connect(const std::string& ip, int port);
-
-        int getSocketFd() const;
+        
+        int getSocketFd() const { return sockfd; }
+        
+        // Additional helper methods
+        void setReceiveTimeout(int seconds);
+        void setReuseAddr(bool enable);
     };
 }
 
-#endif
+#endif // SOCKET_HPP

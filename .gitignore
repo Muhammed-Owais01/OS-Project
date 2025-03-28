@@ -1,3 +1,19 @@
 .vscode
 bin
 obj
+# Ignore object files
+*.o
+
+# Ignore the Makefile
+Makefile
+
+# Ignore compiled binaries
+client
+server
+
+# Ignore backup and temporary files
+*.swp
+*.swo
+*.tmp
+*.bak
+.DS_Store

@@ -1,37 +1,80 @@
 #include "socket.hpp"
 #include <iostream>
+#include <string>
+#include <stdexcept>
 #include <cstring>
-#include <unistd.h>
+#include <cerrno> 
 
-void send_request(const std::string& request_type) {
-    try {
-        os_socket::Socket client(AF_INET, SOCK_STREAM, 0);
-        client.connect("127.0.0.1", 8080);
+class Client {
+private:
+    std::string server_ip_;
+    int server_port_;
+public:
+    Client(const std::string& server_ip, int server_port) : server_ip_(server_ip), server_port_(server_port) {}
 
-        send(client.getSocketFd(), request_type.c_str(), request_type.size(), 0);
+    std::string sendRequest(const std::string& request) {
+        os_socket::Socket socket(AF_INET, SOCK_STREAM, 0);
+        socket.setReceiveTimeout(5); // 5 second timeout
+        socket.connect(server_ip_, server_port_);
 
+        // Send request
+        ssize_t sent = send(socket.getSocketFd(), request.c_str(), request.size(), 0);
+        if (sent != static_cast<ssize_t>(request.size())) {
+            throw std::runtime_error("Failed to send complete request");
+        }
+
+        // Receive response
         char buffer[1024] = {0};
-        recv(client.getSocketFd(), buffer, sizeof(buffer) - 1, 0);
-        std::cout << "Response from server:\n" << buffer << std::endl;
+        ssize_t received = recv(socket.getSocketFd(), buffer, sizeof(buffer) - 1, 0);
+        
+        if (received <= 0) {
+            throw std::runtime_error(received == 0 ? "Server disconnected" : "Receive error");
+        }
 
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << '\n';
+        return std::string(buffer, received);
     }
-}
+
+};
 
 int main() {
-    int choice;
-    std::cout << "1. Read Data\n";
-    std::cout << "2. Write Data\n";
-    std::cin >> choice;
+    try {
+        Client client("127.0.0.1", 8080);
 
-    if (choice == 1) {
-        send_request("READ");
-    } else if (choice == 2) {
-        send_request("WRITE");
-    } else {
-        std::cout << "Invalid choice\n";
+        while (true) {
+            std::cout << "1. Read Data\n";
+            std::cout << "2. Write Data\n";
+            std::cout << "3. Exit\n";
+            std::cout << "Choice: ";
+
+            int choice;
+            std::cin >> choice;
+            std::cin.ignore();
+
+            try {
+                switch (choice) {
+                    case 1: {
+                        std::string response = client.sendRequest("READ");
+                        std::cout << "Server response: " << response;
+                        break;
+                    }
+                    case 2: {
+                        std::string response = client.sendRequest("WRITE");
+                        std::cout << "Server response: " << response;
+                        break;
+                    }
+                    case 3:
+                        return 0;
+                    default:
+                        std::cout << "Invalid choice\n";
+                }
+            } 
+            catch (const std::exception& e) {
+                std::cerr << "Error: " << e.what() << "\n";
+            }
+        }
+    } 
+    catch (const std::exception& e) {
+        std::cerr << "Client fatal error: " << e.what() << "\n";
+        return 1;
     }
-
-    return 0;
 }

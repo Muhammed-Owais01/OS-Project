@@ -1,95 +1,148 @@
+#include "socket.hpp"
 #include <iostream>
 #include <thread>
 #include <vector>
+#include <memory>
+#include <atomic>
+#include <mutex>
+#include <condition_variable>
 #include <cstring>
-#include <unistd.h>
-#include <semaphore.h>
-#include "socket.hpp"
+#include <cerrno>
 
-// Shared Resource
-int shared_data = 0;
-int reader_count = 0;
-
-// Semaphores
-sem_t mutex, write_lock;
-
-void reader(Socket client_socket) {
-    sem_wait(&mutex);
-    reader_count++;
-    if (reader_count == 1) {
-        // Reader locks writers out
-        sem_wait(&write_lock); 
+class LockGuard {
+private:
+    std::mutex& mutex_;
+public:
+    explicit LockGuard(std::mutex& mutex) : mutex_(mutex) {
+        mutex_.lock();
     }
-    sem_post(&mutex);
-
-    std::string response = "READ: Shared data = " + std::to_string(shared_data) + "\n";
-    send(client_socket.getSocketFd(), response.c_str(), response.size(), 0);
-
-    sem_wait(&mutex);
-    reader_count--;
-    if (reader_count == 0) {
-        // Last reader unlocks writers
-        sem_post(&write_lock); 
+    
+    ~LockGuard() {
+        mutex_.unlock();
     }
-    sem_post(&mutex);
+};
 
-    close(client_socket.getSocketFd());
-}
+class ThreadSafeData {
+private:
+    int data_ = 0;
+    mutable std::mutex mutex_;
+public:
+    int read() const {
+        LockGuard lock(mutex_);
+        return data_;
+    }
 
-void writer(Socket client_socket) {
-    sem_wait(&write_lock);
+    void write(int value) {
+        LockGuard lock(mutex_);
+        data_ = value;
+    }
+};
 
-    shared_data++;
-    std::string response = "WRITE: Shared data updated to " + std::to_string(shared_data) + "\n";
-    send(client_socket.getSocketFd(), response.c_str(), response.size(), 0);
+class ConnectionHandler {
+private:
+    ThreadSafeData& shared_data_;
+public:
+    ConnectionHandler(ThreadSafeData& shared_data) : shared_data_(shared_data) {}
 
-    sem_post(&write_lock);
-    close(client_socket.getSocketFd());
+    void handle(int client_fd) {
+        try {
+            // Creates client socket
+            os_socket::Socket client_socket(client_fd);
+            // Timeout to prevent hanging 
+            client_socket.setReceiveTimeout(5);
 
-}
+            char buffer[1024] = {0};
+            ssize_t bytes_read = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
 
-void handle_client(Socket client_socket) {
-    char buffer[1024] = {0};
+            if (bytes_read <= 0) {
+                if (bytes_read == 0) {
+                    std::cerr << "Client disconnected\n";
+                } else {
+                    std::cerr << "Receive error: " << strerror(errno) << "\n";
+                }
+                return;
+            }
 
-    ssize_t valread = read(client_socket.get_fd(), buffer, sizeof(buffer) - 1);
-    if (valread > 0) {
-        buffer[valread] = '\0';
-        
-        if (strncmp(buffer, "READ", 4) == 0) {
-            reader(client_socket);
-        } else if (strncmp(buffer, "WRITE", 5) == 0) {
-            writer(client_socket);
-        } else {
-            std::string error_msg = "Invalid request\n";
-            send(client_socket.getSocketFd(), error_msg.c_str(), error_msg.size(), 0);
-            close(client_socket.getSocketFd());
+            buffer[bytes_read] = '\0';
+            // Converts the read char array into a string
+            std::string request(buffer);
+
+            std::string response;
+            if (request == "READ") {
+                response = "DATA: " + std::to_string(shared_data_.read()) + "\n";
+            } 
+            else if (request == "WRITE") {
+                int current = shared_data_.read();
+                shared_data_.write(current + 1);
+                response = "UPDATED: " + std::to_string(current + 1) + "\n";
+            } 
+            else {
+                response = "ERROR: Invalid request\n";
+            }
+
+            send(client_fd, response.c_str(), response.size(), 0);
+        } 
+        catch (const std::exception& e) {
+            std::cerr << "Connection handling error: " << e.what() << "\n";
         }
     }
-}
+};
 
 int main() {
-    sem_init(&mutex, 0, 1);
-    sem_init(&write_lock, 0, 1);
+    try {
+        ThreadSafeData shared_data;
+        ConnectionHandler handler(shared_data);
 
-    Socket server_socket(AF_INET, SOCK_STREAM, 0);
-    server_socket.bind(8080, "127.0.0.1");
-    server_socket.listen(10);
+        // Creates TCP socket, AF_INET = IPv4, SOCK_STREAM = TCP
+        os_socket::Socket server(AF_INET, SOCK_STREAM, 0);
+        server.bind(8080);
+        server.listen(); // Default value is 10
 
-    std::vector<std::thread> threads;
+        std::cout << "Server running on port 8080...\n";
 
-    while (true) {
-        auto [client_fd, client_ip] = server_socket.accept();
-        std::cout << "New connection from: " << client_ip << std::endl;
+        std::vector<std::thread> workers;
+        std::atomic<bool> running{true};
 
-        threads.emplace_back(handle_client, Socket(client_fd, AF_INET, {}));
+        // Worker thread function
+        auto worker = [&]() {
+            while (running) {
+                try {
+                    auto [client_fd, client_ip] = server.accept();
+                    std::cout << "New connection from: " << client_ip << "\n";
+                    handler.handle(client_fd);
+                } 
+                catch (const std::exception& e) {
+                    if (running) {
+                        std::cerr << "Accept error: " << e.what() << "\n";
+                    }
+                }
+            }
+        };
+
+        // Start worker threads
+        // hardware_concurrency: Creates one thread per cpu core
+        unsigned num_threads = std::thread::hardware_concurrency();
+        for (unsigned i = 0; i < num_threads; ++i) {
+            workers.emplace_back(worker);
+        }
+
+        // Wait for shutdown signal
+        std::cout << "Press Enter to shutdown...\n";
+        std::cin.get();
+        running = false;
+
+        // Close server socket to unblock accept calls
+        server.~Socket();
+
+        // Join all threads
+        for (auto& t : workers) {
+            if (t.joinable()) t.join();
+        }
+
+        return 0;
+    } 
+    catch (const std::exception& e) {
+        std::cerr << "Server fatal error: " << e.what() << "\n";
+        return 1;
     }
-
-    for (auto& t : threads) {
-        if (t.joinable()) t.join();
-    }
-
-    sem_destroy(&mutex);
-    sem_destroy(&write_lock);
-
-    return 0;
-}
+}   
