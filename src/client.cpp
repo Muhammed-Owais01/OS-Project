@@ -14,26 +14,36 @@ public:
 
     std::string sendRequest(const std::string& request) {
         os_socket::Socket socket(AF_INET, SOCK_STREAM, 0);
-        socket.setReceiveTimeout(5); // 5 second timeout
-        socket.connect(server_ip_, server_port_);
-
-        // Send request
-        ssize_t sent = send(socket.getSocketFd(), request.c_str(), request.size(), 0);
-        if (sent != static_cast<ssize_t>(request.size())) {
-            throw std::runtime_error("Failed to send complete request");
-        }
-
-        // Receive response
-        char buffer[1024] = {0};
-        ssize_t received = recv(socket.getSocketFd(), buffer, sizeof(buffer) - 1, 0);
+        socket.setReceiveTimeout(5);
         
-        if (received <= 0) {
-            throw std::runtime_error(received == 0 ? "Server disconnected" : "Receive error");
+        try {
+            // Connect to server
+            socket.connect(server_ip_, server_port_);
+            
+            // Send raw command (ensure null termination)
+            std::string request_msg = request + '\0';  // Null-terminate the message
+            ssize_t sent = send(socket.getSocketFd(), 
+                               request_msg.c_str(), 
+                               request_msg.size(), 
+                               0);
+            
+            if (sent <= 0) {
+                throw std::runtime_error("Send failed");
+            }
+    
+            // Receive response
+            char buffer[1024] = {0};
+            ssize_t received = recv(socket.getSocketFd(), buffer, sizeof(buffer) - 1, 0);
+            
+            if (received <= 0) {
+                throw std::runtime_error(received == 0 ? "Server disconnected" : "Receive error");
+            }
+    
+            return std::string(buffer, received);
+        } catch (const std::exception& e) {
+            throw std::runtime_error("Communication error: " + std::string(e.what()));
         }
-
-        return std::string(buffer, received);
     }
-
 };
 
 int main() {
