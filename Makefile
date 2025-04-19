@@ -2,17 +2,21 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -pthread -Iinclude
 
-# Folders
-SRC_DIR = src
-BUILD_DIR = build
-
 # Executable names
 SERVER = server
 CLIENT = client
 
 # Source files
-SERVER_SRCS = $(SRC_DIR)/server.cpp $(SRC_DIR)/socket.cpp
-CLIENT_SRCS = $(SRC_DIR)/client.cpp $(SRC_DIR)/socket.cpp
+SERVER_SRCS = src/server.cpp \
+              src/socket.cpp \
+              src/connection_handler.cpp \
+              src/message_queue.cpp \
+              src/message_processor.cpp \
+              src/thread_safe_data.cpp \
+              src/lock_guard.cpp
+
+CLIENT_SRCS = src/client.cpp \
+              src/socket.cpp
 
 # Object files
 SERVER_OBJS = $(SERVER_SRCS:.cpp=.o)
@@ -23,24 +27,24 @@ all: $(SERVER) $(CLIENT)
 
 # Compile the server
 $(SERVER): $(SERVER_OBJS)
-	$(CXX) $(CXXFLAGS) -o $(SERVER) $(SERVER_OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $^
 
 # Compile the client
 $(CLIENT): $(CLIENT_OBJS)
-	$(CXX) $(CXXFLAGS) -o $(CLIENT) $(CLIENT_OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $^
 
-# Compile object files
+# Generic compilation rule
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# Run the server
+# Run targets
 run_server: $(SERVER)
 	./$(SERVER)
 
-# Run the client
 run_client: $(CLIENT)
 	./$(CLIENT)
 
-# Clean compiled files
 clean:
 	rm -f $(SERVER) $(CLIENT) $(SERVER_OBJS) $(CLIENT_OBJS)
+
+.PHONY: all clean run_server run_client
