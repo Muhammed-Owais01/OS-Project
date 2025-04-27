@@ -7,37 +7,5 @@
 			"email":	"bob@example.com",
 			"id":	2,
 			"name":	"Bob Johnson"
-		}, {
-			"email":	"bob@gmail.com",
-			"id":	3,
-			"name":	"owais"
-		}, {
-			"name":	"asd",
-			"email":	"wda",
-			"id":	4
-		}, {
-			"name":	"AWD",
-			"email":	"AWD",
-			"id":	5
-		}, {
-			"name":	"AWD",
-			"email":	"AWD",
-			"id":	6
-		}, {
-			"name":	"ad",
-			"email":	"wad",
-			"id":	7
-		}, {
-			"name":	"asd",
-			"email":	"awd",
-			"id":	8
-		}, {
-			"name":	"asd",
-			"email":	"asd",
-			"id":	9
-		}, {
-			"name":	"ad",
-			"email":	"asd",
-			"id":	10
 		}]
 }

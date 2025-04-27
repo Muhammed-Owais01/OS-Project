@@ -56,10 +56,6 @@ HttpParseResult http_parse_request(const char* raw_request) {
     result.success = false;
     http_request_init(&result.request);
     
-    printf("\n====== RAW REQUEST START ======\n");
-    printf("%s", raw_request);
-    printf("\n====== RAW REQUEST END ======\n");
-    
     if (!raw_request || !*raw_request) {
         printf("Parser: Empty raw request\n");
         return result;
@@ -82,10 +78,7 @@ HttpParseResult http_parse_request(const char* raw_request) {
             // Check for empty line
             if (*(current+1) == '\n' || 
                 (*(current+1) == '\r' && *(current+2) == '\n')) {
-                body_start = current + 
-                    (*(current+1) == '\r' ? 2 : 1) + 1;
-                printf("Parser: Found body at: %p ('%.20s')\n", 
-                      body_start, body_start);
+                body_start = current + (*(current+1) == '\r' ? 2 : 1) + 1;
                 break;
             }
         }
@@ -118,9 +111,6 @@ HttpParseResult http_parse_request(const char* raw_request) {
         return result;
     }
 
-    printf("Parser: Method='%s' Path='%s' Version='%s'\n", 
-           method, path, version);
-
     result.request.method = strdup(method);
     result.request.path = strdup(path);
 
@@ -140,8 +130,6 @@ HttpParseResult http_parse_request(const char* raw_request) {
     char* headers_end = body_start - 
         (*(body_start-2) == '\r' ? 2 : 1) - 1;
     *headers_end = '\0';
-
-    printf("Parser: Headers section:\n%s\n", headers_start);
 
     char* header_line = strtok(headers_start, "\n");
     while (header_line && result.request.header_count < MAX_HEADERS) {
@@ -173,18 +161,12 @@ HttpParseResult http_parse_request(const char* raw_request) {
     // Store body
     if (*body_start) {
         result.request.body = strdup(body_start);
-        printf("Parser: Body stored: '%.*s%s'\n", 
-               50, result.request.body, 
-               strlen(result.request.body) > 50 ? "..." : "");
     } else {
         printf("Parser: Empty body\n");
     }
 
     free(request_copy);
     result.success = true;
-    printf("Parser: Parse successful. Headers: %zu, Body: %s\n",
-           result.request.header_count,
-           result.request.body ? "present" : "missing");
     
     return result;
 }

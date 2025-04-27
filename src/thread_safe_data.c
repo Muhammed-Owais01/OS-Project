@@ -32,7 +32,6 @@ void tsd_destroy(ThreadSafeData* tsd) {
 
 static void load_from_file(ThreadSafeData* tsd) {
     pthread_mutex_lock(&tsd->mutex);
-    DEBUG_PRINT("Loading from file: %s\n", tsd->filename);
     
     FILE* file = fopen(tsd->filename, "r");
     if (!file) {
@@ -88,20 +87,15 @@ static void load_from_file(ThreadSafeData* tsd) {
         }
     }
     
-    DEBUG_PRINT("File loaded successfully\n");
     pthread_mutex_unlock(&tsd->mutex);
 }
 
 static void save_to_file_unlocked(ThreadSafeData* tsd) {
-    DEBUG_ENTER();
-    DEBUG_PTR(tsd);
     
     if (!tsd->data) {
         DEBUG_PRINT("No data to save\n");
         return;
     }
-
-    DEBUG_PTR(tsd->data);
     
     char temp_filename[256];
     snprintf(temp_filename, sizeof(temp_filename), "%s.tmp", tsd->filename);
@@ -121,7 +115,6 @@ static void save_to_file_unlocked(ThreadSafeData* tsd) {
     }
 
     size_t len = strlen(json_str);
-    DEBUG_PRINT("Writing %zu bytes\n", len);
     
     size_t written = fwrite(json_str, 1, len, file);
     free(json_str);
@@ -147,9 +140,6 @@ static void save_to_file_unlocked(ThreadSafeData* tsd) {
         remove(temp_filename);
         return;
     }
-    
-    DEBUG_PRINT("File save completed\n");
-    DEBUG_EXIT();
 }
 
 cJSON* tsd_read(ThreadSafeData* tsd) {
