@@ -5,10 +5,10 @@ make
 ```
 ### In the same terminal run:
 ```
-make run_server
+./server
 ```
 
 ### Open another terminal and run:
 ```
-make run_client
+./client
 ```
