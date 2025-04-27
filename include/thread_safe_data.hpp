@@ -1,11 +1,19 @@
 #pragma once
 #include <mutex>
+#include <nlohmann/json.hpp>
+#include <string>
+
+using json = nlohmann::json;
 
 class ThreadSafeData {
 private:
-    int data_ = 0;
+    json data_;
     mutable std::mutex mutex_;
+    const std::string filename_ = "users.json";
+    void loadFromFile();
+    void saveToFile() const;
 public:
-    int read() const;
-    void write(int value);
+    ThreadSafeData();
+    json read() const;
+    void write(const json& value);
 };

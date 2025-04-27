@@ -19,7 +19,6 @@ int main() {
         MessageQueue message_queue;
         std::atomic<bool> running{true};
 
-        // Creates TCP socket
         os_socket::Socket server(AF_INET, SOCK_STREAM, 0);
         server.bind(8080);
         server.listen();
@@ -30,7 +29,6 @@ int main() {
         std::vector<std::thread> workers;
         std::vector<std::thread> processors;
 
-        // Worker thread function
         auto worker = [&]() {
             while (running) {
                 try {
@@ -46,7 +44,6 @@ int main() {
             }
         };
         
-        // Processor thread function
         auto processor_func = [&]() {
             MessageProcessor processor(message_queue, shared_data);
             while (running) {
@@ -54,29 +51,23 @@ int main() {
             }
         };
 
-        // Start worker threads
         unsigned num_threads = std::thread::hardware_concurrency();
         for (unsigned i = 0; i < num_threads; ++i) {
             workers.emplace_back(worker);
         }
         
-        // Start processor threads (use half the cores for processors)
         for (unsigned i = 0; i < num_threads/2; ++i) {
             processors.emplace_back(processor_func);
         }
 
-        // Wait for shutdown signal
         std::cout << "Press Enter to shutdown...\n";
         std::cin.get();
         running = false;
 
-        // Close server socket to unblock accept calls
         server.~Socket();
 
-        // Wake up all processor threads
         message_queue.shutdown();
 
-        // Join all threads
         for (auto& t : workers) {
             if (t.joinable()) t.join();
         }

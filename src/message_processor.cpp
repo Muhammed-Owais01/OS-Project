@@ -3,6 +3,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include "message_processor.hpp"
+#include "http_parser.hpp"
+using json = nlohmann::json;
 
 MessageProcessor::MessageProcessor(MessageQueue& queue, ThreadSafeData& data) : queue_(queue), shared_data_(data) {}
 
@@ -12,26 +14,51 @@ void MessageProcessor::processMessages() {
             auto msg_opt = queue_.pop();
             if (!msg_opt) break; // Queue was shutdown
             
-            auto [client_fd, message] = *msg_opt;
+            auto [client_fd, raw_request] = *msg_opt;
             std::string response;
 
-            if (message == "READ") {
-                response = "DATA " + std::to_string(shared_data_.read()) + "\n";
-            }
-            else if (message == "WRITE") {
-                int current = shared_data_.read();
-                shared_data_.write(current+1);
-                response = "UPDATED: " + std::to_string(current+1) + "\n";
+            auto request_opt = HttpParser::parse(raw_request);
+            if(!request_opt){
+                response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: 11\r\nConnection: close\r\n\r\nBad Request";
             }
             else {
-                response = "ERROR: Invalid request\n";
+                auto& request = *request_opt;
+
+                if (request.method == "GET" && request.path == "/users") {
+                    json data = shared_data_.read();
+                    std::string body = data.dump(2);
+                    response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + 
+                               std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
+                } else if (request.method == "POST" && request.path == "/users") {
+                    try {
+                        json new_user = json::parse(request.body);
+                        if (!new_user.contains("name") || !new_user.contains("email")) {
+                            throw std::runtime_error("Missing name or email");
+                        }
+
+                        json data = shared_data_.read();
+                        int new_id = data["users"].size() + 1;
+                        new_user["id"] = new_id;
+                        data["users"].push_back(new_user);
+                        shared_data_.write(data);
+
+                        std::string body = new_user.dump(2);
+                        response = "HTTP/1.1 201 Created\r\nContent-Type: application/json\r\nContent-Length: " + 
+                                   std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
+                    } catch (const std::exception& e) {
+                        std::string body = "Error: " + std::string(e.what());
+                        response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: " + 
+                                   std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
+                    }
+                } else {
+                    response = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 9\r\nConnection: close\r\n\r\nNot Found";
+                }
             }
 
             if (send(client_fd, response.c_str(), response.size(), 0) == -1) {
                 std::cerr << "Send error\n";
             }
             
-            // Close the client socket after processing
             close(client_fd);
         } 
         catch (const std::exception& e) {
