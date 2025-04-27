@@ -18,10 +18,9 @@ void MessageProcessor::processMessages() {
             std::string response;
 
             auto request_opt = HttpParser::parse(raw_request);
-            if(!request_opt){
+            if (!request_opt) {
                 response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: 11\r\nConnection: close\r\n\r\nBad Request";
-            }
-            else {
+            } else {
                 auto& request = *request_opt;
 
                 if (request.method == "GET" && request.path == "/users") {
@@ -31,21 +30,26 @@ void MessageProcessor::processMessages() {
                                std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
                 } else if (request.method == "POST" && request.path == "/users") {
                     try {
+                        std::cerr << "Parsing JSON body: " << request.body << "\n";
                         json new_user = json::parse(request.body);
+                        std::cerr << "JSON parsed successfully\n";
                         if (!new_user.contains("name") || !new_user.contains("email")) {
                             throw std::runtime_error("Missing name or email");
                         }
-
+                        std::cerr << "Reading shared data\n";
                         json data = shared_data_.read();
+                        std::cerr << "Shared data read: " << data.dump() << "\n";
                         int new_id = data["users"].size() + 1;
                         new_user["id"] = new_id;
                         data["users"].push_back(new_user);
+                        std::cerr << "Writing new user to shared data\n";
                         shared_data_.write(data);
-
+                        std::cerr << "Data written successfully\n";
                         std::string body = new_user.dump(2);
                         response = "HTTP/1.1 201 Created\r\nContent-Type: application/json\r\nContent-Length: " + 
                                    std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
                     } catch (const std::exception& e) {
+                        std::cerr << "POST processing error: " << e.what() << "\n";
                         std::string body = "Error: " + std::string(e.what());
                         response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: " + 
                                    std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
@@ -55,14 +59,15 @@ void MessageProcessor::processMessages() {
                 }
             }
 
+            std::cerr << "Sending response to client_fd " << client_fd << "\n";
             if (send(client_fd, response.c_str(), response.size(), 0) == -1) {
-                std::cerr << "Send error\n";
+                std::cerr << "Send error: " << strerror(errno) << "\n";
             }
             
+            std::cerr << "Closing client_fd " << client_fd << "\n";
             close(client_fd);
-        } 
-        catch (const std::exception& e) {
+        } catch (const std::exception& e) {
             std::cerr << "Processing error: " << e.what() << "\n";
         }
     }
-} 
+}

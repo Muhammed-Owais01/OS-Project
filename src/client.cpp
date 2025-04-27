@@ -17,7 +17,7 @@ public:
 
     std::string sendRequest(const std::string& method, const std::string& path, const std::string& body = "") {
         os_socket::Socket socket(AF_INET, SOCK_STREAM, 0);
-        socket.setReceiveTimeout(5);
+        socket.setReceiveTimeout(10); // Increased from 5 to 10 seconds
         
         try {
             socket.connect(server_ip_, server_port_);
@@ -33,6 +33,8 @@ public:
                 request += body;
             }
             
+            std::cout << "Sending request:\n" << request << "\n---\n";
+            
             ssize_t sent = send(socket.getSocketFd(), request.c_str(), request.size(), 0);
             if (sent <= 0) {
                 throw std::runtime_error("Send failed");
@@ -41,7 +43,7 @@ public:
             char buffer[4096] = {0};
             ssize_t received = recv(socket.getSocketFd(), buffer, sizeof(buffer) - 1, 0);
             if (received <= 0) {
-                throw std::runtime_error(received == 0 ? "Server disconnected" : "Receive error");
+                throw std::runtime_error(received == 0 ? "Server disconnected" : "Receive error: " + std::string(strerror(errno)));
             }
     
             return std::string(buffer, received);

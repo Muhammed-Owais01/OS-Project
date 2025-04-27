@@ -9,7 +9,7 @@ class ThreadSafeData {
 private:
     json data_;
     mutable std::mutex mutex_;
-    const std::string filename_ = "users.json";
+    const std::string filename_ = "src/users.json";
     void loadFromFile();
     void saveToFile() const;
 public:

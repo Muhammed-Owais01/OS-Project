@@ -45,9 +45,13 @@ int main() {
         };
         
         auto processor_func = [&]() {
-            MessageProcessor processor(message_queue, shared_data);
-            while (running) {
-                processor.processMessages();
+            try {
+                MessageProcessor processor(message_queue, shared_data);
+                while (running) {
+                    processor.processMessages();
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "Processor thread error: " << e.what() << "\n";
             }
         };
 
@@ -79,7 +83,7 @@ int main() {
         return 0;
     } 
     catch (const std::exception& e) {
-        std::cerr << "Server fatal error: " << e.what() << "\n";
+        std::cerr << "Main server error: " << e.what() << "\n";
         return 1;
     }
 }

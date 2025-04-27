@@ -11,6 +11,10 @@ std::optional<HttpRequest> HttpParser::parse(const std::string& raw_request) {
     if (!std::getline(stream, line)) {
         return std::nullopt;
     }
+    // Remove trailing \r if present
+    if (!line.empty() && line.back() == '\r') {
+        line.pop_back();
+    }
 
     std::istringstream line_stream(line);
     std::string version;
@@ -20,8 +24,15 @@ std::optional<HttpRequest> HttpParser::parse(const std::string& raw_request) {
     }
 
     // Parse headers
-    while (std::getline(stream, line) && line != "\r") {
-        if (line.empty()) continue;
+    while (std::getline(stream, line)) {
+        // Remove trailing \r if present
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        // Check for blank line (end of headers)
+        if (line.empty()) {
+            break;
+        }
         auto colon_pos = line.find(':');
         if (colon_pos == std::string::npos) continue;
 
@@ -30,7 +41,7 @@ std::optional<HttpRequest> HttpParser::parse(const std::string& raw_request) {
         
         // Trim whitespace
         key.erase(std::remove_if(key.begin(), key.end(), ::isspace), key.end());
-        value.erase(std::remove_if(value.begin(), key.end(), ::isspace), value.end());
+        value.erase(std::remove_if(value.begin(), value.end(), ::isspace), value.end());
         
         request.headers[key] = value;
     }
