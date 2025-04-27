@@ -3,6 +3,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include "message_processor.hpp"
+#include <thread>
 #include "http_parser.hpp"
 using json = nlohmann::json;
 
@@ -27,7 +28,15 @@ void MessageProcessor::processMessages() {
                     json data = shared_data_.read();
                     std::string body = data.dump(2);
                     response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + 
-                               std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
+                               std::to_string(body.size());
+                    
+                    if (request.headers.count("Connection")) {
+                        response += "Connection: " + request.headers["Connection"] + "\r\n";
+                    } else {
+                        response += "Connection: close\r\n";
+                    }
+
+                    response += body;
                 } else if (request.method == "POST" && request.path == "/users") {
                     try {
                         std::cerr << "Parsing JSON body: " << request.body << "\n";
@@ -63,6 +72,8 @@ void MessageProcessor::processMessages() {
             if (send(client_fd, response.c_str(), response.size(), 0) == -1) {
                 std::cerr << "Send error: " << strerror(errno) << "\n";
             }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
             
             std::cerr << "Closing client_fd " << client_fd << "\n";
             close(client_fd);

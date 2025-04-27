@@ -30,30 +30,31 @@ void ThreadSafeData::loadFromFile() {
 }
 
 void ThreadSafeData::saveToFile() const {
+    std::cerr << "Acquiring lock for file write...\n";
     LockGuard lock(mutex_);
-    std::cerr << "Attempting to open file for writing: " << filename_ << "\n";
-    std::ofstream file(filename_);
+    std::cerr << "Lock acquired, opening file...\n";
+    
+    std::ofstream file(filename_, std::ios::trunc);
     if (!file.is_open()) {
-        std::cerr << "Failed to open file: " << filename_ << " (errno: " << strerror(errno) << ")\n";
-        throw std::runtime_error("Failed to open file for writing: " + filename_ + " (errno: " + std::string(strerror(errno)) + ")");
+        std::cerr << "CRITICAL: Failed to open file: " << strerror(errno) << "\n";
+        throw std::runtime_error("File open failed");
     }
-    std::cerr << "Writing JSON to file\n";
+    std::cerr << "File opened successfully, writing data...\n";
+
     try {
         file << data_.dump(2);
-        if (file.fail()) {
-            std::cerr << "File stream error during writing (errno: " << strerror(errno) << ")\n";
-            throw std::runtime_error("File stream error during writing: " + std::string(strerror(errno)));
+        file.flush(); // Force write to disk
+        if (!file.good()) {
+            std::cerr << "CRITICAL: Write failed: " << strerror(errno) << "\n";
+            throw std::runtime_error("File write failed");
         }
+        std::cerr << "Data written successfully, closing file...\n";
         file.close();
-        if (file.fail()) {
-            std::cerr << "File stream error after closing (errno: " << strerror(errno) << ")\n";
-            throw std::runtime_error("File stream error after closing: " + std::string(strerror(errno)));
-        }
-        std::cerr << "File write complete\n";
     } catch (const std::exception& e) {
-        std::cerr << "File write error: " << e.what() << "\n";
-        throw std::runtime_error("Failed to write JSON to file: " + std::string(e.what()));
+        std::cerr << "CRITICAL: Exception during save: " << e.what() << "\n";
+        throw;
     }
+    std::cerr << "File operation completed successfully.\n";
 }
 
 json ThreadSafeData::read() const {
@@ -62,8 +63,9 @@ json ThreadSafeData::read() const {
 }
 
 void ThreadSafeData::write(const json& value) {
-    LockGuard lock(mutex_);
-    std::cerr << "Writing new data to shared storage\n";
-    data_ = value;
-    saveToFile();
+    {
+        LockGuard lock(mutex_);
+        data_ = value;
+    } // Lock released here
+    saveToFile(); // Now safe to acquire lock again
 }

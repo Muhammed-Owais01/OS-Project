@@ -3,6 +3,7 @@ bin
 obj
 # Ignore object files
 *.o
+*.d
 
 # Ignore the Makefile
 Makefile

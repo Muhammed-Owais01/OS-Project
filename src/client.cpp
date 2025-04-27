@@ -17,7 +17,7 @@ public:
 
     std::string sendRequest(const std::string& method, const std::string& path, const std::string& body = "") {
         os_socket::Socket socket(AF_INET, SOCK_STREAM, 0);
-        socket.setReceiveTimeout(10); // Increased from 5 to 10 seconds
+        socket.setReceiveTimeout(30); // Increased from 5 to 10 seconds
         
         try {
             socket.connect(server_ip_, server_port_);
