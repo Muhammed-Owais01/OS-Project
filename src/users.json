@@ -1,19 +1,11 @@
 {
-  "users": [
-    {
-      "email": "alice@example.com",
-      "id": 1,
-      "name": "Alice Smith"
-    },
-    {
-      "email": "bob@example.com",
-      "id": 2,
-      "name": "Bob Johnson"
-    },
-    {
-      "email": "bob@gmail.com",
-      "id": 3,
-      "name": "owais"
-    }
-  ]
+	"users":	[{
+			"email":	"alice@example.com",
+			"id":	1,
+			"name":	"Alice Smith"
+		}, {
+			"email":	"bob@example.com",
+			"id":	2,
+			"name":	"Bob Johnson"
+		}]
 }
