@@ -72,7 +72,7 @@ bool auth_signup(ThreadSafeData* tsd, const char* username, const char* password
     cJSON_AddItemToArray(users, new_user);
     
     // Save (using your existing TSD mechanism)
-    save_to_file_unlocked(tsd);
+    tsd_write(tsd, tsd->data); 
     pthread_mutex_unlock(&tsd->mutex);
     return true;
 }

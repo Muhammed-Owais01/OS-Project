@@ -8,10 +8,10 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#define DEFAULT_FILENAME "src/users.json"
+static const char* DEFAULT_FILENAME = "src/users.json";
 
 static void load_from_file(ThreadSafeData* tsd);
-static void save_to_file_unlocked(ThreadSafeData* tsd);
+
 
 void tsd_init(ThreadSafeData* tsd) {
     tsd->filename = DEFAULT_FILENAME;
