@@ -9,6 +9,7 @@ typedef struct {
     cJSON* data;
     pthread_mutex_t mutex;
     const char* filename;
+    
 } ThreadSafeData;
 
 void tsd_init(ThreadSafeData* tsd);

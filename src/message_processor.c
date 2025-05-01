@@ -1,5 +1,6 @@
 #include "message_processor.h"
 #include "debug_macros.h"
+#include "auth.h"
 #include "cJSON.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -125,6 +126,41 @@ static void process_single_message(MessageProcessor* mp) {
                         }
                     }
                 }
+            }
+        }
+        
+        else if (strcmp(request->method, "POST") == 0 && strcmp(request->path, "/signup") == 0) {
+            cJSON* req_json = cJSON_Parse(request->body);
+            if (!req_json) {
+                response = create_error_response("400 Bad Request", "Invalid JSON");
+            } else {
+                char* username = cJSON_GetStringValue(cJSON_GetObjectItem(req_json, "username"));
+                char* password = cJSON_GetStringValue(cJSON_GetObjectItem(req_json, "password"));
+                
+                if (username && password && auth_signup(mp->shared_data, username, password)) {
+                    response = create_response("201 Created", "application/json", 
+                                            "{\"status\":\"success\"}", "close");
+                } else {
+                    response = create_error_response("400 Bad Request", "Signup failed");
+                }
+                cJSON_Delete(req_json);
+            }
+        }
+        else if (strcmp(request->method, "POST") == 0 && strcmp(request->path, "/login") == 0) {
+            cJSON* req_json = cJSON_Parse(request->body);
+            if (!req_json) {
+                response = create_error_response("400 Bad Request", "Invalid JSON");
+            } else {
+                char* username = cJSON_GetStringValue(cJSON_GetObjectItem(req_json, "username"));
+                char* password = cJSON_GetStringValue(cJSON_GetObjectItem(req_json, "password"));
+                
+                if (username && password && auth_login(mp->shared_data, username, password)) {
+                    response = create_response("200 OK", "application/json",
+                                            "{\"status\":\"success\"}", "close");
+                } else {
+                    response = create_error_response("401 Unauthorized", "Invalid credentials");
+                }
+                cJSON_Delete(req_json);
             }
         } else {
             response = create_error_response("404 Not Found", "Not Found");

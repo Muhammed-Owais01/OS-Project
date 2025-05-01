@@ -9,15 +9,20 @@
 typedef struct {
     char* server_ip;
     int server_port;
+    char* auth_token;  // Stores session token after login
 } Client;
 
 void client_init(Client* client, const char* server_ip, int server_port) {
     client->server_ip = strdup(server_ip);
     client->server_port = server_port;
+    client->auth_token = NULL;
 }
 
 void client_cleanup(Client* client) {
     free(client->server_ip);
+    if (client->auth_token) {
+        free(client->auth_token);
+    }
 }
 
 char* client_send_request(Client* client, const char* method, const char* path, const char* body) {
@@ -40,6 +45,13 @@ char* client_send_request(Client* client, const char* method, const char* path, 
         "Host: %s\r\n"
         "Content-Type: application/json\r\n",
         method, path, client->server_ip);
+
+    // Add auth token if available
+    if (client->auth_token) {
+        length += snprintf(request + length, sizeof(request) - length,
+            "Authorization: Bearer %s\r\n",
+            client->auth_token);
+    }
 
     if (body && body[0]) {
         length += snprintf(request + length, sizeof(request) - length,
@@ -83,9 +95,12 @@ char* client_send_request(Client* client, const char* method, const char* path, 
 
 bool client_run_interactive(Client* client) {
     while (true) {
+        printf("\n===== Menu =====\n");
         printf("1. GET /users\n");
         printf("2. POST /users\n");
-        printf("3. Exit\n");
+        printf("3. Sign Up\n");
+        printf("4. Login\n");
+        printf("5. Exit\n");
         printf("Choice: ");
 
         int choice;
@@ -97,17 +112,22 @@ bool client_run_interactive(Client* client) {
         while (getchar() != '\n'); // Clear the newline
 
         switch (choice) {
-            case 1: {
+            case 1: { // GET /users
                 char* response = client_send_request(client, "GET", "/users", NULL);
                 if (response) {
-                    printf("Server response:\n%s\n", response);
+                    printf("\nServer response:\n%s\n", response);
                     free(response);
                 } else {
                     printf("Request failed\n");
                 }
                 break;
             }
-            case 2: {
+            case 2: { // POST /users
+                if (!client->auth_token) {
+                    printf("Error: You need to login first\n");
+                    break;
+                }
+                
                 char name[256], email[256];
                 printf("Enter name: ");
                 fgets(name, sizeof(name), stdin);
@@ -127,14 +147,82 @@ bool client_run_interactive(Client* client) {
                 free(body);
 
                 if (response) {
-                    printf("Server response:\n%s\n", response);
+                    printf("\nServer response:\n%s\n", response);
                     free(response);
                 } else {
                     printf("Request failed\n");
                 }
                 break;
             }
-            case 3:
+            case 3: { // Sign Up
+                char username[256], password[256];
+                printf("Enter username: ");
+                fgets(username, sizeof(username), stdin);
+                username[strcspn(username, "\n")] = '\0';
+
+                printf("Enter password: ");
+                fgets(password, sizeof(password), stdin);
+                password[strcspn(password, "\n")] = '\0';
+
+                cJSON* req = cJSON_CreateObject();
+                cJSON_AddStringToObject(req, "username", username);
+                cJSON_AddStringToObject(req, "password", password);
+                char* body = cJSON_PrintUnformatted(req);
+                cJSON_Delete(req);
+
+                char* response = client_send_request(client, "POST", "/signup", body);
+                free(body);
+
+                if (response) {
+                    printf("\nServer response:\n%s\n", response);
+                    free(response);
+                } else {
+                    printf("Signup failed\n");
+                }
+                break;
+            }
+            case 4: { // Login
+                char username[256], password[256];
+                printf("Enter username: ");
+                fgets(username, sizeof(username), stdin);
+                username[strcspn(username, "\n")] = '\0';
+
+                printf("Enter password: ");
+                fgets(password, sizeof(password), stdin);
+                password[strcspn(password, "\n")] = '\0';
+
+                cJSON* req = cJSON_CreateObject();
+                cJSON_AddStringToObject(req, "username", username);
+                cJSON_AddStringToObject(req, "password", password);
+                char* body = cJSON_PrintUnformatted(req);
+                cJSON_Delete(req);
+
+                char* response = client_send_request(client, "POST", "/login", body);
+                free(body);
+
+                if (response) {
+                    printf("\nServer response:\n%s\n", response);
+                    
+                    // Parse token from response (simplified)
+                    cJSON* json = cJSON_Parse(response);
+                    if (json) {
+                        cJSON* token = cJSON_GetObjectItem(json, "token");
+                        if (token && token->valuestring) {
+                            if (client->auth_token) {
+                                free(client->auth_token);
+                            }
+                            client->auth_token = strdup(token->valuestring);
+                            printf("Logged in successfully!\n");
+                        }
+                        cJSON_Delete(json);
+                    }
+                    free(response);
+                } else {
+                    printf("Login failed\n");
+                }
+                break;
+            }
+            case 5: // Exit
                 return true;
             default:
                 printf("Invalid choice\n");
@@ -142,16 +230,3 @@ bool client_run_interactive(Client* client) {
     }
 }
 
-int main() {
-    Client client;
-    client_init(&client, "127.0.0.1", 8080);
-
-    if (!client_run_interactive(&client)) {
-        fprintf(stderr, "Client error occurred\n");
-        client_cleanup(&client);
-        return 1;
-    }
-
-    client_cleanup(&client);
-    return 0;
-}
