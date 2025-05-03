@@ -42,7 +42,6 @@ static bool verify_auth(HttpRequest* request, ThreadSafeData* tsd) {
     // Check Authorization header
     for (size_t i = 0; i < request->header_count; i++) {
         if (strcasecmp(request->header_keys[i], "Authorization") == 0) {
-            // Simple token verification - in production use JWT or similar
             return auth_verify_token(request->header_values[i], tsd);
         }
     }
@@ -157,8 +156,11 @@ static void process_single_message(MessageProcessor* mp) {
             if (!req_json) {
                 response = create_error_response("400 Bad Request", "Invalid JSON");
             } else {
-                char* username = cJSON_GetStringValue(cJSON_GetObjectItem(req_json, "username"));
-                char* password = cJSON_GetStringValue(cJSON_GetObjectItem(req_json, "password"));
+                cJSON* username_obj = cJSON_GetObjectItem(req_json, "username");
+                cJSON* password_obj = cJSON_GetObjectItem(req_json, "password");
+                
+                char* username = username_obj ? username_obj->valuestring : NULL;
+                char* password = password_obj ? password_obj->valuestring : NULL;
                 
                 if (username && password && auth_signup(mp->shared_data, username, password)) {
                     response = create_response("201 Created", "application/json", 
@@ -174,8 +176,11 @@ static void process_single_message(MessageProcessor* mp) {
             if (!req_json) {
                 response = create_error_response("400 Bad Request", "Invalid JSON");
             } else {
-                char* username = cJSON_GetStringValue(cJSON_GetObjectItem(req_json, "username"));
-                char* password = cJSON_GetStringValue(cJSON_GetObjectItem(req_json, "password"));
+                cJSON* username_obj = cJSON_GetObjectItem(req_json, "username");
+                cJSON* password_obj = cJSON_GetObjectItem(req_json, "password");
+                
+                char* username = username_obj ? username_obj->valuestring : NULL;
+                char* password = password_obj ? password_obj->valuestring : NULL;
                 
                 char* token = auth_login(mp->shared_data, username, password);
                 if (token) {

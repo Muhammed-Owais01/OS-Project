@@ -101,7 +101,7 @@ bool auth_signup(ThreadSafeData* tsd, const char* username, const char* password
     cJSON* user;
     cJSON_ArrayForEach(user, users) {
         cJSON* existing = cJSON_GetObjectItem(user, "username");
-        if (existing && strcmp(existing->valuestring, username) == 0) {
+        if (existing && existing->valuestring && strcmp(existing->valuestring, username) == 0) {
             DEBUG_PRINT("Username %s already exists\n", username);
             goto cleanup;
         }
@@ -213,12 +213,29 @@ cleanup:
     return token;
 }
 
-bool auth_verify_token(const char* token, ThreadSafeData* tsd) {
+bool auth_verify_token(const char* token_header, ThreadSafeData* tsd) {
     (void)tsd; // Mark as unused to suppress warning
     
-    if (!token || strlen(token) != TOKEN_LENGTH) {
-        DEBUG_PRINT("Invalid token format\n");
+    if (!token_header) {
+        DEBUG_PRINT("No token provided\n");
         return false;
     }
+    
+    // Check if token has "Bearer " prefix
+    const char* bearer_prefix = "Bearer ";
+    const size_t prefix_len = strlen(bearer_prefix);
+    
+    // Skip "Bearer " prefix if present
+    const char* token = token_header;
+    if (strncmp(token, bearer_prefix, prefix_len) == 0) {
+        token += prefix_len;
+    }
+    
+    if (strlen(token) != TOKEN_LENGTH) {
+        DEBUG_PRINT("Invalid token length: %zu (expected %d)\n", strlen(token), TOKEN_LENGTH);
+        return false;
+    }
+    
+    DEBUG_PRINT("Token verified successfully\n");
     return true;
 }
