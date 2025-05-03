@@ -1,4 +1,3 @@
-// thread_safe_data.c
 #include "thread_safe_data.h"
 #include "debug_macros.h"
 #include <stdio.h>
@@ -7,16 +6,20 @@
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 
 static const char* DEFAULT_FILENAME = "src/users.json";
 
 // Forward declarations
 static void load_from_file(ThreadSafeData* tsd);
-static void save_to_file_unlocked(ThreadSafeData* tsd);
+static bool save_to_file_unlocked(ThreadSafeData* tsd);
 
 void tsd_init(ThreadSafeData* tsd) {
-    tsd->filename = (char*)DEFAULT_FILENAME;  // Cast to non-const for compatibility
-    pthread_mutex_init(&tsd->mutex, NULL);
+    tsd->filename = strdup(DEFAULT_FILENAME);
+    if (pthread_mutex_init(&tsd->mutex, NULL) != 0) {
+        DEBUG_PRINT("Mutex init failed\n");
+        exit(EXIT_FAILURE);
+    }
     tsd->data = NULL;
     load_from_file(tsd);
 }
@@ -27,6 +30,7 @@ void tsd_destroy(ThreadSafeData* tsd) {
         cJSON_Delete(tsd->data);
         tsd->data = NULL;
     }
+    free(tsd->filename);
     pthread_mutex_unlock(&tsd->mutex);
     pthread_mutex_destroy(&tsd->mutex);
 }
@@ -34,14 +38,16 @@ void tsd_destroy(ThreadSafeData* tsd) {
 static void load_from_file(ThreadSafeData* tsd) {
     pthread_mutex_lock(&tsd->mutex);
     
+    DEBUG_PRINT("Loading data from %s\n", tsd->filename);
+    
     FILE* file = fopen(tsd->filename, "r");
     if (!file) {
         DEBUG_PRINT("File not found, initializing empty data\n");
         tsd->data = cJSON_CreateObject();
         if (tsd->data) {
             cJSON_AddItemToObject(tsd->data, "users", cJSON_CreateArray());
+            save_to_file_unlocked(tsd);
         }
-        save_to_file_unlocked(tsd); 
         pthread_mutex_unlock(&tsd->mutex);
         return;
     }
@@ -57,7 +63,7 @@ static void load_from_file(ThreadSafeData* tsd) {
         return;
     }
 
-    char* buffer = (char*)malloc(length + 1);
+    char* buffer = malloc(length + 1);
     if (!buffer) {
         DEBUG_PRINT("Memory allocation failed\n");
         fclose(file);
@@ -91,19 +97,22 @@ static void load_from_file(ThreadSafeData* tsd) {
     pthread_mutex_unlock(&tsd->mutex);
 }
 
-static void save_to_file_unlocked(ThreadSafeData* tsd) {
+static bool save_to_file_unlocked(ThreadSafeData* tsd) {
     if (!tsd->data) {
         DEBUG_PRINT("No data to save\n");
-        return;
+        return false;
     }
     
+    DEBUG_PRINT("Saving data to %s\n", tsd->filename);
+    
+    // Create temp file in same directory
     char temp_filename[256];
     snprintf(temp_filename, sizeof(temp_filename), "%s.tmp", tsd->filename);
     
     FILE* file = fopen(temp_filename, "w");
     if (!file) {
         DEBUG_PRINT("Failed to open temp file: %s\n", strerror(errno));
-        return;
+        return false;
     }
 
     char* json_str = cJSON_Print(tsd->data);
@@ -111,7 +120,7 @@ static void save_to_file_unlocked(ThreadSafeData* tsd) {
         DEBUG_PRINT("JSON print failed\n");
         fclose(file);
         remove(temp_filename);
-        return;
+        return false;
     }
 
     size_t len = strlen(json_str);
@@ -122,14 +131,14 @@ static void save_to_file_unlocked(ThreadSafeData* tsd) {
         DEBUG_PRINT("Write incomplete: %zu/%zu\n", written, len);
         fclose(file);
         remove(temp_filename);
-        return;
+        return false;
     }
 
     if (fflush(file) != 0 || fsync(fileno(file)) != 0) {
         DEBUG_PRINT("Flush/sync failed: %s\n", strerror(errno));
         fclose(file);
         remove(temp_filename);
-        return;
+        return false;
     }
 
     fclose(file);
@@ -137,8 +146,10 @@ static void save_to_file_unlocked(ThreadSafeData* tsd) {
     if (rename(temp_filename, tsd->filename) != 0) {
         DEBUG_PRINT("Rename failed: %s\n", strerror(errno));
         remove(temp_filename);
-        return;
+        return false;
     }
+
+    return true;
 }
 
 cJSON* tsd_read(ThreadSafeData* tsd) {
@@ -148,7 +159,8 @@ cJSON* tsd_read(ThreadSafeData* tsd) {
     return copy;
 }
 
-void tsd_write(ThreadSafeData* tsd, cJSON* value) {
+bool tsd_write(ThreadSafeData* tsd, cJSON* value) {
+    bool result = false;
     pthread_mutex_lock(&tsd->mutex);
     
     if (tsd->data) {
@@ -156,6 +168,7 @@ void tsd_write(ThreadSafeData* tsd, cJSON* value) {
     }
     tsd->data = value;
     
-    save_to_file_unlocked(tsd);
+    result = save_to_file_unlocked(tsd);
     pthread_mutex_unlock(&tsd->mutex);
+    return result;
 }
