@@ -1,5 +1,6 @@
 # Compiler and flags
 CXX = g++
+CXX1 = gcc
 CXXFLAGS = -std=c++17 -Wall -Wextra -pthread -Iinclude
 LDFLAGS = -lcjson -pthread -lcrypto  # Combined all linker flags
 DEPFLAGS = -M
@@ -8,7 +9,7 @@ DEPFLAGS = -M
 SERVER = server
 CLIENT = client
 
-# Source files (added auth.c to server sources)
+
 SERVER_SRCS = src/server.c \
               src/socket.c \
               src/connection_handler.c \
@@ -42,11 +43,11 @@ $(SERVER): $(SERVER_OBJS)
 $(CLIENT): $(CLIENT_OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
-# Rule for .c files
-%.o: %.c
-	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# Special rule for lock_guard.cpp
+%.o: %.c
+	$(CXX1) $(CXXFLAGS) -c $< -o $@
+
+
 src/lock_guard.o: src/lock_guard.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 

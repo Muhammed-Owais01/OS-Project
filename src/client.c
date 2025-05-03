@@ -93,29 +93,54 @@ char* client_send_request(Client* client, const char* method, const char* path, 
     return response;
 }
 
-bool client_run_interactive(Client* client) {
-    while (true) {
-        printf("\n===== Menu =====\n");
-        printf("1. GET /users\n");
-        printf("2. POST /users\n");
-        printf("3. Sign Up\n");
-        printf("4. Login\n");
-        printf("5. Exit\n");
-        printf("Choice: ");
+void print_help() {
+    printf("\nAvailable commands:\n");
+    printf("1. GET /users - List all users (requires login)\n");
+    printf("2. POST /users - Create new user (requires login)\n");
+    printf("3. Sign Up - Register new account\n");
+    printf("4. Login - Authenticate and get token\n");
+    printf("5. Help - Show this help message\n");
+    printf("6. Exit - Quit the program\n");
+}
 
+bool client_run_interactive(Client* client) {
+    print_help();
+    
+    while (true) {
+        printf("\nEnter command (5 for help): ");
+        
+        char input[10];
+        if (fgets(input, sizeof(input), stdin) == NULL) {
+            break;
+        }
+        
         int choice;
-        if (scanf("%d", &choice) != 1) {
-            while (getchar() != '\n'); // Clear input buffer
-            printf("Invalid input\n");
+        if (sscanf(input, "%d", &choice) != 1) {
+            printf("Invalid input. Please enter a number.\n");
             continue;
         }
-        while (getchar() != '\n'); // Clear the newline
 
         switch (choice) {
             case 1: { // GET /users
+                if (!client->auth_token) {
+                    printf("Error: You need to login first (use command 4)\n");
+                    break;
+                }
+                
                 char* response = client_send_request(client, "GET", "/users", NULL);
                 if (response) {
                     printf("\nServer response:\n%s\n", response);
+                    
+                    // Pretty-print JSON response if possible
+                    cJSON* json = cJSON_Parse(response);
+                    if (json) {
+                        char* pretty = cJSON_Print(json);
+                        if (pretty) {
+                            printf("Formatted response:\n%s\n", pretty);
+                            free(pretty);
+                        }
+                        cJSON_Delete(json);
+                    }
                     free(response);
                 } else {
                     printf("Request failed\n");
@@ -124,7 +149,7 @@ bool client_run_interactive(Client* client) {
             }
             case 2: { // POST /users
                 if (!client->auth_token) {
-                    printf("Error: You need to login first\n");
+                    printf("Error: You need to login first (use command 4)\n");
                     break;
                 }
                 
@@ -203,7 +228,7 @@ bool client_run_interactive(Client* client) {
                 if (response) {
                     printf("\nServer response:\n%s\n", response);
                     
-                    // Parse token from response (simplified)
+                    // Parse token from response
                     cJSON* json = cJSON_Parse(response);
                     if (json) {
                         cJSON* token = cJSON_GetObjectItem(json, "token");
@@ -212,7 +237,9 @@ bool client_run_interactive(Client* client) {
                                 free(client->auth_token);
                             }
                             client->auth_token = strdup(token->valuestring);
-                            printf("Logged in successfully!\n");
+                            printf("Successfully logged in! Token saved.\n");
+                        } else {
+                            printf("Login failed - no token received\n");
                         }
                         cJSON_Delete(json);
                     }
@@ -222,11 +249,29 @@ bool client_run_interactive(Client* client) {
                 }
                 break;
             }
-            case 5: // Exit
+            case 5: // Help
+                print_help();
+                break;
+            case 6: // Exit
                 return true;
             default:
-                printf("Invalid choice\n");
+                printf("Invalid command. Enter 5 for help.\n");
         }
     }
+    return true;
 }
 
+int main() {
+    Client client;
+    client_init(&client, "127.0.0.1", 8080);
+
+    printf("Simple HTTP Client\n");
+    printf("Server: %s:%d\n", client.server_ip, client.server_port);
+    
+    if (!client_run_interactive(&client)) {
+        fprintf(stderr, "Client error occurred\n");
+    }
+
+    client_cleanup(&client);
+    return 0;
+}

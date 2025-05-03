@@ -10,11 +10,12 @@
 
 static const char* DEFAULT_FILENAME = "src/users.json";
 
+// Forward declarations
 static void load_from_file(ThreadSafeData* tsd);
-
+static void save_to_file_unlocked(ThreadSafeData* tsd);
 
 void tsd_init(ThreadSafeData* tsd) {
-    tsd->filename = DEFAULT_FILENAME;
+    tsd->filename = (char*)DEFAULT_FILENAME;  // Cast to non-const for compatibility
     pthread_mutex_init(&tsd->mutex, NULL);
     tsd->data = NULL;
     load_from_file(tsd);
@@ -91,7 +92,6 @@ static void load_from_file(ThreadSafeData* tsd) {
 }
 
 static void save_to_file_unlocked(ThreadSafeData* tsd) {
-    
     if (!tsd->data) {
         DEBUG_PRINT("No data to save\n");
         return;
@@ -115,7 +115,6 @@ static void save_to_file_unlocked(ThreadSafeData* tsd) {
     }
 
     size_t len = strlen(json_str);
-    
     size_t written = fwrite(json_str, 1, len, file);
     free(json_str);
     

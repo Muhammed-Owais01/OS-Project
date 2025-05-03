@@ -3,10 +3,12 @@
 #include <openssl/sha.h>
 #include <string.h>
 #include <stdlib.h>
-#include <cstdio>
+#include <time.h>
+#include <stdio.h>
 
 #define SALT_LENGTH 16
 #define HASH_LENGTH (SHA256_DIGEST_LENGTH * 2 + 1)
+#define TOKEN_LENGTH 32
 
 static void hash_password(const char* password, char* output) {
     unsigned char salt[SALT_LENGTH];
@@ -35,8 +37,21 @@ static void hash_password(const char* password, char* output) {
     output[HASH_LENGTH - 1] = '\0';
 }
 
+static char* generate_token() {
+    const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    char* token = malloc(TOKEN_LENGTH + 1);
+    if (!token) return NULL;
+
+    srand(time(NULL));
+    for (int i = 0; i < TOKEN_LENGTH; i++) {
+        int key = rand() % (sizeof(charset) - 1);
+        token[i] = charset[key];
+    }
+    token[TOKEN_LENGTH] = '\0';
+    return token;
+}
+
 bool auth_signup(ThreadSafeData* tsd, const char* username, const char* password) {
-    // Validate input
     if (!username || !password || strlen(username) == 0 || strlen(password) == 0) {
         return false;
     }
@@ -46,45 +61,38 @@ bool auth_signup(ThreadSafeData* tsd, const char* username, const char* password
     
     pthread_mutex_lock(&tsd->mutex);
     
-    // Get users array (your TSD already initializes this)
     cJSON* users = cJSON_GetObjectItem(tsd->data, "users");
     if (!users) {
-        pthread_mutex_unlock(&tsd->mutex);
-        return false;
+        users = cJSON_AddArrayToObject(tsd->data, "users");
     }
     
-    // Check if username exists
     cJSON* user;
     cJSON_ArrayForEach(user, users) {
         cJSON* existing = cJSON_GetObjectItem(user, "username");
         if (existing && strcmp(existing->valuestring, username) == 0) {
             pthread_mutex_unlock(&tsd->mutex);
-            return false; // Username taken
+            return false;
         }
     }
     
-    // Create new user object
     cJSON* new_user = cJSON_CreateObject();
     cJSON_AddStringToObject(new_user, "username", username);
     cJSON_AddStringToObject(new_user, "password_hash", hashed_password);
-    
-    // Add to users array
     cJSON_AddItemToArray(users, new_user);
     
-    // Save (using your existing TSD mechanism)
-    tsd_write(tsd, tsd->data); 
+    tsd_write(tsd, tsd->data);
     pthread_mutex_unlock(&tsd->mutex);
     return true;
 }
 
-bool auth_login(ThreadSafeData* tsd, const char* username, const char* password) {
-    if (!username || !password) return false;
+char* auth_login(ThreadSafeData* tsd, const char* username, const char* password) {
+    if (!username || !password) return NULL;
     
     char test_hash[HASH_LENGTH];
     hash_password(password, test_hash);
     
     pthread_mutex_lock(&tsd->mutex);
-    bool authenticated = false;
+    char* token = NULL;
     
     cJSON* users = cJSON_GetObjectItem(tsd->data, "users");
     if (users) {
@@ -96,12 +104,19 @@ bool auth_login(ThreadSafeData* tsd, const char* username, const char* password)
             if (json_username && stored_hash && 
                 strcmp(json_username->valuestring, username) == 0 &&
                 strcmp(stored_hash->valuestring, test_hash) == 0) {
-                authenticated = true;
+                token = generate_token();
                 break;
             }
         }
     }
     
     pthread_mutex_unlock(&tsd->mutex);
-    return authenticated;
+    return token;
+}
+
+bool auth_verify_token(const char* token, ThreadSafeData* tsd) {
+    if (!token || strlen(token) != TOKEN_LENGTH) {
+        return false;
+    }
+    return true;
 }

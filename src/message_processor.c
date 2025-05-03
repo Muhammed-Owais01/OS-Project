@@ -13,6 +13,7 @@ static void process_single_message(MessageProcessor* mp);
 static char* create_response(const char* status, const char* content_type, 
                            const char* body, const char* connection);
 static char* create_error_response(const char* status, const char* message);
+static bool verify_auth(HttpRequest* request, ThreadSafeData* tsd);
 
 void message_processor_init(MessageProcessor* mp, MessageQueue* queue, 
                           ThreadSafeData* data) {
@@ -29,6 +30,23 @@ void message_processor_start(MessageProcessor* mp) {
 
 void message_processor_stop(MessageProcessor* mp) {
     mp->running = false;
+}
+
+static bool verify_auth(HttpRequest* request, ThreadSafeData* tsd) {
+    // Skip auth for signup and login
+    if ((strcmp(request->method, "POST") == 0 && 
+        (strcmp(request->path, "/signup") == 0 || strcmp(request->path, "/login") == 0))) {
+        return true;
+    }
+    
+    // Check Authorization header
+    for (size_t i = 0; i < request->header_count; i++) {
+        if (strcasecmp(request->header_keys[i], "Authorization") == 0) {
+            // Simple token verification - in production use JWT or similar
+            return auth_verify_token(request->header_values[i], tsd);
+        }
+    }
+    return false;
 }
 
 static void process_single_message(MessageProcessor* mp) {
@@ -50,7 +68,13 @@ static void process_single_message(MessageProcessor* mp) {
     } else {
         HttpRequest* request = &parse_result.request;
         
-        if (strcmp(request->method, "GET") == 0 && 
+        // Verify authentication for protected routes
+        if (strcmp(request->path, "/signup") != 0 && 
+            strcmp(request->path, "/login") != 0 &&
+            !verify_auth(request, mp->shared_data)) {
+            response = create_error_response("401 Unauthorized", "Authentication required");
+        }
+        else if (strcmp(request->method, "GET") == 0 && 
             strcmp(request->path, "/users") == 0) {
             cJSON* data = tsd_read(mp->shared_data);
             char* body = data ? cJSON_Print(data) : NULL;
@@ -128,7 +152,6 @@ static void process_single_message(MessageProcessor* mp) {
                 }
             }
         }
-        
         else if (strcmp(request->method, "POST") == 0 && strcmp(request->path, "/signup") == 0) {
             cJSON* req_json = cJSON_Parse(request->body);
             if (!req_json) {
@@ -139,9 +162,9 @@ static void process_single_message(MessageProcessor* mp) {
                 
                 if (username && password && auth_signup(mp->shared_data, username, password)) {
                     response = create_response("201 Created", "application/json", 
-                                            "{\"status\":\"success\"}", "close");
+                                            "{\"status\":\"success\",\"message\":\"User created\"}", "close");
                 } else {
-                    response = create_error_response("400 Bad Request", "Signup failed");
+                    response = create_error_response("400 Bad Request", "Signup failed - username may be taken");
                 }
                 cJSON_Delete(req_json);
             }
@@ -154,9 +177,13 @@ static void process_single_message(MessageProcessor* mp) {
                 char* username = cJSON_GetStringValue(cJSON_GetObjectItem(req_json, "username"));
                 char* password = cJSON_GetStringValue(cJSON_GetObjectItem(req_json, "password"));
                 
-                if (username && password && auth_login(mp->shared_data, username, password)) {
-                    response = create_response("200 OK", "application/json",
-                                            "{\"status\":\"success\"}", "close");
+                char* token = auth_login(mp->shared_data, username, password);
+                if (token) {
+                    char response_body[256];
+                    snprintf(response_body, sizeof(response_body), 
+                            "{\"status\":\"success\",\"token\":\"%s\"}", token);
+                    response = create_response("200 OK", "application/json", response_body, "close");
+                    free(token);
                 } else {
                     response = create_error_response("401 Unauthorized", "Invalid credentials");
                 }
@@ -184,7 +211,6 @@ static void process_single_message(MessageProcessor* mp) {
 
 static char* create_response(const char* status, const char* content_type, 
                            const char* body, const char* connection) {
-    // Calculate needed buffer size
     size_t length = snprintf(NULL, 0, 
         "HTTP/1.1 %s\r\n"
         "Content-Type: %s\r\n"
@@ -192,11 +218,9 @@ static char* create_response(const char* status, const char* content_type,
         "Connection: %s\r\n\r\n%s",
         status, content_type, strlen(body), connection, body);
     
-    // Allocate with explicit cast
     char* response = (char*)malloc(length + 1);
     if (!response) return NULL;
     
-    // Format the response
     sprintf(response,
         "HTTP/1.1 %s\r\n"
         "Content-Type: %s\r\n"
