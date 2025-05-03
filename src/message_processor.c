@@ -68,17 +68,12 @@ static void process_single_message(MessageProcessor* mp) {
         HttpRequest* request = &parse_result.request;
         
         // Verify authentication for protected routes
-        if (strcmp(request->path, "/signup") != 0 && 
-            strcmp(request->path, "/login") != 0 &&
-            !verify_auth(request, mp->shared_data)) {
+        if (!verify_auth(request, mp->shared_data)) {
             response = create_error_response("401 Unauthorized", "Authentication required");
         }
         else if (strcmp(request->method, "GET") == 0 && 
             strcmp(request->path, "/users") == 0) {
-            cJSON* data = tsd_read(mp->shared_data);
-            char* body = data ? cJSON_Print(data) : NULL;
-            if (data) cJSON_Delete(data);
-            
+            char* text_data = tsd_read_text(mp->shared_data);
             const char* connection = "close";
             for (size_t i = 0; i < request->header_count; i++) {
                 if (strcasecmp(request->header_keys[i], "Connection") == 0) {
@@ -87,67 +82,18 @@ static void process_single_message(MessageProcessor* mp) {
                 }
             }
             
-            response = create_response("200 OK", "application/json", body ? body : "{}", connection);
-            if (body) free(body);
+            response = create_response("200 OK", "text/plain", text_data ? text_data : "", connection);
+            if (text_data) free(text_data);
         }
         else if (strcmp(request->method, "POST") == 0 && 
                  strcmp(request->path, "/users") == 0) {
-            
             if (!request->body || !*request->body) {
                 response = create_error_response("400 Bad Request", "Missing request body");
             } else {
-                cJSON* new_user = cJSON_Parse(request->body);
-                
-                if (!new_user) {
-                    response = create_error_response("400 Bad Request", "Invalid JSON");
+                if (tsd_write_text(mp->shared_data, request->body)) {
+                    response = create_response("201 Created", "text/plain", "Data saved successfully", "close");
                 } else {
-                    cJSON* name = cJSON_GetObjectItem(new_user, "name");
-                    cJSON* email = cJSON_GetObjectItem(new_user, "email");
-                    
-                    if (!name || !email) {
-                        response = create_error_response("400 Bad Request", "Missing name or email");
-                        cJSON_Delete(new_user);
-                    } else {
-                        cJSON* data = tsd_read(mp->shared_data);
-                        
-                        if (!data) {
-                            response = create_error_response("500 Internal Server Error", "Data access failed");
-                            cJSON_Delete(new_user);
-                        } else {
-                            cJSON* users = cJSON_GetObjectItem(data, "users");
-                            
-                            if (!users) {
-                                response = create_error_response("500 Internal Server Error", "Invalid data structure");
-                                cJSON_Delete(data);
-                                cJSON_Delete(new_user);
-                            } else {
-                                int new_id = cJSON_GetArraySize(users) + 1;
-                                
-                                cJSON* new_user_copy = cJSON_Duplicate(new_user, 1);
-                                if (!new_user_copy) {
-                                    response = create_error_response("500 Internal Server Error", "Memory allocation failed");
-                                } else {
-                                    cJSON_AddNumberToObject(new_user_copy, "id", new_id);
-                                    cJSON_AddItemToArray(users, new_user_copy);
-
-                                    cJSON* data_to_write = cJSON_Duplicate(data, 1);
-                                    if (data_to_write) {
-                                        tsd_write(mp->shared_data, data_to_write);
-                                        
-                                        char* body = cJSON_Print(new_user_copy);
-                                        response = create_response("201 Created", "application/json", 
-                                                                 body ? body : "{}", "close");
-                                        if (body) free(body);
-                                    } else {
-                                        response = create_error_response("500 Internal Server Error", "Data copy failed");
-                                    }
-                                }
-                            
-                                cJSON_Delete(data);
-                                cJSON_Delete(new_user);
-                            }
-                        }
-                    }
+                    response = create_error_response("500 Internal Server Error", "Failed to save data");
                 }
             }
         }

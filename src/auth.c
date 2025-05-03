@@ -78,20 +78,20 @@ bool auth_signup(ThreadSafeData* tsd, const char* username, const char* password
     DEBUG_PRINT("Mutex locked for signup\n");
     
     // Ensure data structure exists
-    if (!tsd->data) {
+    if (!tsd->auth_data) {
         DEBUG_PRINT("Creating new data structure\n");
-        tsd->data = cJSON_CreateObject();
-        if (!tsd->data) {
+        tsd->auth_data = cJSON_CreateObject();
+        if (!tsd->auth_data) {
             DEBUG_PRINT("Failed to create data object\n");
             pthread_mutex_unlock(&tsd->mutex);
             return false;
         }
     }
 
-    cJSON* users = cJSON_GetObjectItem(tsd->data, "users");
+    cJSON* users = cJSON_GetObjectItem(tsd->auth_data, "users");
     if (!users) {
         DEBUG_PRINT("Creating users array\n");
-        users = cJSON_AddArrayToObject(tsd->data, "users");
+        users = cJSON_AddArrayToObject(tsd->auth_data, "users");
         if (!users) {
             DEBUG_PRINT("Failed to create users array\n");
             pthread_mutex_unlock(&tsd->mutex);
@@ -134,15 +134,7 @@ bool auth_signup(ThreadSafeData* tsd, const char* username, const char* password
     }
     
     // Save changes
-    cJSON* data_to_write = cJSON_Duplicate(tsd->data, 1);
-    if (!data_to_write) {
-        DEBUG_PRINT("Failed to duplicate data for writing\n");
-        pthread_mutex_unlock(&tsd->mutex);
-        return false;
-    }
-
-    // Write to file
-    bool result = tsd_write(tsd, data_to_write);
+    bool result = save_to_file_unlocked(tsd);
     pthread_mutex_unlock(&tsd->mutex);
     
     DEBUG_PRINT("Signup result for user %s: %s\n", username, result ? "success" : "failure");
@@ -160,13 +152,13 @@ char* auth_login(ThreadSafeData* tsd, const char* username, const char* password
     pthread_mutex_lock(&tsd->mutex);
     char* token = NULL;
     
-    if (!tsd->data) {
+    if (!tsd->auth_data) {
         DEBUG_PRINT("No data structure exists\n");
         pthread_mutex_unlock(&tsd->mutex);
         return NULL;
     }
 
-    cJSON* users = cJSON_GetObjectItem(tsd->data, "users");
+    cJSON* users = cJSON_GetObjectItem(tsd->auth_data, "users");
     if (!users) {
         DEBUG_PRINT("No users array found\n");
         pthread_mutex_unlock(&tsd->mutex);
