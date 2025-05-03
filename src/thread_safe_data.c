@@ -7,12 +7,14 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <libgen.h> // For dirname
 
-static const char* DEFAULT_FILENAME = "src/users.json";
+static const char* DEFAULT_FILENAME = "users.json"; // Changed from "src/users.json"
 
 // Forward declarations
 static void load_from_file(ThreadSafeData* tsd);
 static bool save_to_file_unlocked(ThreadSafeData* tsd);
+static bool ensure_directory_exists(const char* filepath);
 
 void tsd_init(ThreadSafeData* tsd) {
     tsd->filename = strdup(DEFAULT_FILENAME);
@@ -33,6 +35,28 @@ void tsd_destroy(ThreadSafeData* tsd) {
     free(tsd->filename);
     pthread_mutex_unlock(&tsd->mutex);
     pthread_mutex_destroy(&tsd->mutex);
+}
+
+// Ensure directory exists
+static bool ensure_directory_exists(const char* filepath) {
+    char* path_copy = strdup(filepath);
+    if (!path_copy) return false;
+    
+    char* dir = dirname(path_copy);
+    
+    // Check if the directory path is just "." (current directory)
+    if (strcmp(dir, ".") == 0) {
+        free(path_copy);
+        return true; // Current directory always exists
+    }
+    
+    // Try to create directory tree
+    char command[512];
+    snprintf(command, sizeof(command), "mkdir -p %s", dir);
+    int result = system(command);
+    
+    free(path_copy);
+    return (result == 0);
 }
 
 static void load_from_file(ThreadSafeData* tsd) {
@@ -104,6 +128,12 @@ static bool save_to_file_unlocked(ThreadSafeData* tsd) {
     }
     
     DEBUG_PRINT("Saving data to %s\n", tsd->filename);
+    
+    // Ensure directory exists
+    if (!ensure_directory_exists(tsd->filename)) {
+        DEBUG_PRINT("Failed to create directory for %s\n", tsd->filename);
+        return false;
+    }
     
     // Create temp file in same directory
     char temp_filename[256];

@@ -83,7 +83,8 @@ bool auth_signup(ThreadSafeData* tsd, const char* username, const char* password
         tsd->data = cJSON_CreateObject();
         if (!tsd->data) {
             DEBUG_PRINT("Failed to create data object\n");
-            goto cleanup;
+            pthread_mutex_unlock(&tsd->mutex);
+            return false;
         }
     }
 
@@ -93,7 +94,8 @@ bool auth_signup(ThreadSafeData* tsd, const char* username, const char* password
         users = cJSON_AddArrayToObject(tsd->data, "users");
         if (!users) {
             DEBUG_PRINT("Failed to create users array\n");
-            goto cleanup;
+            pthread_mutex_unlock(&tsd->mutex);
+            return false;
         }
     }
     
@@ -103,7 +105,8 @@ bool auth_signup(ThreadSafeData* tsd, const char* username, const char* password
         cJSON* existing = cJSON_GetObjectItem(user, "username");
         if (existing && existing->valuestring && strcmp(existing->valuestring, username) == 0) {
             DEBUG_PRINT("Username %s already exists\n", username);
-            goto cleanup;
+            pthread_mutex_unlock(&tsd->mutex);
+            return false;
         }
     }
     
@@ -111,39 +114,39 @@ bool auth_signup(ThreadSafeData* tsd, const char* username, const char* password
     cJSON* new_user = cJSON_CreateObject();
     if (!new_user) {
         DEBUG_PRINT("Failed to create user object\n");
-        goto cleanup;
+        pthread_mutex_unlock(&tsd->mutex);
+        return false;
     }
 
     if (!cJSON_AddStringToObject(new_user, "username", username) ||
         !cJSON_AddStringToObject(new_user, "password_hash", stored_hash)) {
         DEBUG_PRINT("Failed to add user fields\n");
         cJSON_Delete(new_user);
-        goto cleanup;
+        pthread_mutex_unlock(&tsd->mutex);
+        return false;
     }
     
     if (!cJSON_AddItemToArray(users, new_user)) {
         DEBUG_PRINT("Failed to add user to array\n");
         cJSON_Delete(new_user);
-        goto cleanup;
+        pthread_mutex_unlock(&tsd->mutex);
+        return false;
     }
     
     // Save changes
     cJSON* data_to_write = cJSON_Duplicate(tsd->data, 1);
     if (!data_to_write) {
         DEBUG_PRINT("Failed to duplicate data for writing\n");
-        goto cleanup;
+        pthread_mutex_unlock(&tsd->mutex);
+        return false;
     }
 
     // Write to file
-    tsd_write(tsd, data_to_write);
+    bool result = tsd_write(tsd, data_to_write);
     pthread_mutex_unlock(&tsd->mutex);
     
-    DEBUG_PRINT("Signup successful for user %s\n", username);
-    return true;
-
-cleanup:
-    pthread_mutex_unlock(&tsd->mutex);
-    return false;
+    DEBUG_PRINT("Signup result for user %s: %s\n", username, result ? "success" : "failure");
+    return result;
 }
 
 char* auth_login(ThreadSafeData* tsd, const char* username, const char* password) {
@@ -159,13 +162,15 @@ char* auth_login(ThreadSafeData* tsd, const char* username, const char* password
     
     if (!tsd->data) {
         DEBUG_PRINT("No data structure exists\n");
-        goto cleanup;
+        pthread_mutex_unlock(&tsd->mutex);
+        return NULL;
     }
 
     cJSON* users = cJSON_GetObjectItem(tsd->data, "users");
     if (!users) {
         DEBUG_PRINT("No users array found\n");
-        goto cleanup;
+        pthread_mutex_unlock(&tsd->mutex);
+        return NULL;
     }
 
     cJSON* user;
@@ -208,7 +213,6 @@ char* auth_login(ThreadSafeData* tsd, const char* username, const char* password
         }
     }
     
-cleanup:
     pthread_mutex_unlock(&tsd->mutex);
     return token;
 }
