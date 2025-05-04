@@ -1,28 +1,31 @@
 # Compiler and flags
 CXX = g++
+CXX1 = gcc
 CXXFLAGS = -std=c++17 -Wall -Wextra -pthread -Iinclude
-LDFLAGS = -lcjson -pthread  # Added cJSON linking
+LDFLAGS = -lcjson -pthread -lcrypto  # Combined all linker flags
 DEPFLAGS = -M
 
 # Executable names
 SERVER = server
 CLIENT = client
 
-# Source files
+
 SERVER_SRCS = src/server.c \
               src/socket.c \
               src/connection_handler.c \
               src/message_queue.c \
               src/message_processor.c \
               src/thread_safe_data.c \
-              src/lock_guard.c \
-              src/http_parser.c
+              src/lock_guard.cpp \
+              src/http_parser.c \
+              src/auth.c  
 
 CLIENT_SRCS = src/client.c \
               src/socket.c
 
 # Object files
 SERVER_OBJS = $(SERVER_SRCS:.c=.o)
+SERVER_OBJS := $(SERVER_OBJS:.cpp=.o)  # Handle .cpp files
 CLIENT_OBJS = $(CLIENT_SRCS:.c=.o)
 
 # Dependency files
@@ -34,19 +37,25 @@ all: $(SERVER) $(CLIENT)
 
 # Compile the server
 $(SERVER): $(SERVER_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)  # Added LDFLAGS
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 # Compile the client
 $(CLIENT): $(CLIENT_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)  # Added LDFLAGS
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
-# Generic compilation rule
+
 %.o: %.c
+	$(CXX1) $(CXXFLAGS) -c $< -o $@
+
+
+src/lock_guard.o: src/lock_guard.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # Dependency generation
 %.d: %.c
-	$(CXX) $(CXXFLAGS) $(DEPFLAGS) $< > $@
+	@$(CXX) $(CXXFLAGS) $(DEPFLAGS) $< > $@.tmp
+	@sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.tmp > $@
+	@rm -f $@.tmp
 
 # Run targets
 run_server: $(SERVER)

@@ -2,18 +2,24 @@
 #define THREAD_SAFE_DATA_H
 
 #include <pthread.h>
-#include <stdbool.h>
 #include "cJSON.h"
+#include <stdbool.h>
 
 typedef struct {
-    cJSON* data;
+    char* auth_filename;
+    char* data_filename;
     pthread_mutex_t mutex;
-    const char* filename;
+    cJSON* auth_data;    // For storing authentication data (username/password)
 } ThreadSafeData;
 
 void tsd_init(ThreadSafeData* tsd);
 void tsd_destroy(ThreadSafeData* tsd);
-cJSON* tsd_read(ThreadSafeData* tsd);
-void tsd_write(ThreadSafeData* tsd, cJSON* value);
+cJSON* tsd_read_auth(ThreadSafeData* tsd);
+bool tsd_write_auth(ThreadSafeData* tsd, cJSON* value);
+bool save_to_file_unlocked(ThreadSafeData* tsd);
 
-#endif // THREAD_SAFE_DATA_H
+// Text data functions
+char* tsd_read_text(ThreadSafeData* tsd);
+bool tsd_write_text(ThreadSafeData* tsd, const char* text);
+
+#endif 
