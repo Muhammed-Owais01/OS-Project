@@ -71,13 +71,7 @@ This project appears to be a client-server application with robust error handlin
 
 ### Utility Components
 
-#### 1. Lock Guard (`lock_guard.cpp`, `lock_guard.hpp`)
-- C++ RAII wrapper for mutexes
-- Automatic lock management
-- Thread safety utilities
-- Resource management
-
-#### 2. Debug Macros (`debug_macros.h`)
+#### 1. Debug Macros (`debug_macros.h`)
 - Debugging utilities
 - Logging mechanisms
 - Development tools
@@ -109,7 +103,6 @@ This project appears to be a client-server application with robust error handlin
 ### Thread Safety
 The project implements thread safety through:
 - Mutex-based synchronization
-- RAII lock management
 - Thread-safe data structures
 - Protected critical sections
 
