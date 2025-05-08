@@ -16,7 +16,6 @@ SERVER_SRCS = src/server.c \
               src/message_queue.c \
               src/message_processor.c \
               src/thread_safe_data.c \
-              src/lock_guard.cpp \
               src/http_parser.c \
               src/auth.c  
 
